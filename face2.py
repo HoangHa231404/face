@@ -61,58 +61,110 @@ def get_face_embedding(face):
     """
     Lấy embedding vector từ DeepFace
     """
+    # Tạo tệp tạm thời để lưu ảnh khuôn mặt với 
+    # NamedTemporaryFile là hàm tạo tệp tạm thời
+    # NamedTemporaryFile tạo tệp tạm thời với đuôi .jpg và không xóa tệp
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmpfile:
+        # Lưu đường dẫn tệp tạm thời
         temp_path = tmpfile.name
+        #chuyển đổi file ảnh từ dạng float32 về dạng uint8
+        # khi chuyển đổi về dạng uint8 thì giá trị của ảnh sẽ nằm trong khoảng 0-255
+        #cần chuyển về dạng uint8 vì opencv chỉ nhận ảnh dạng uint8 sau đó lưu ảnh vào tệp tạm thời temp_path
         cv2.imwrite(temp_path, (face * 255).astype(np.uint8))
-    
-    try:
+        #sử dụng hàm represent trong thư viện deepface để lấy vector đặc trưng từ ảnh
+        #tham số img_path: đường dẫn ảnh
+        #  model_name: tên mô hình, ở đây sử dụng mô hình Facenet 
+        #  enforce_detection: kiểm tra khuôn mặt
+        #  deepfacce sẽ trả về 1 vector đặc trưng khi không tìm thấy khuân mặt nếu enforce_detection=False
         embedding_result = DeepFace.represent(img_path=temp_path, model_name="Facenet", enforce_detection=False)
+        #xóa tệp tạm thời khi đã lấy được đặc trưng khuôn mặt
         os.remove(temp_path)
+        #trả về vector đặc trưng dưới dạng mảng numpy
+        #embedding_result[0]['embedding'] là vector đặc trưng được trích xuất từ ảnh nhờ deepface
+        #dtype=np.float32 chuyển về dạng float32 để tiết kiệm bộ nhớ
+        #flatten() chuyển mảng nhiều chiều về mảng 1 chiều
         return np.array(embedding_result[0]['embedding'], dtype=np.float32).flatten()
-    except Exception as e:
-        print(f"Lỗi khi trích xuất đặc trưng khuôn mặt: {e}")
-        return None
+    #nếu không lấy được vector đặc trưng thì trả về None
+    return None
 
+# Hàm đăng ký khuôn mặt từ thư mục có sẵn
 def register_face(folder_path):
     """
     Đăng ký khuôn mặt từ thư mục chứa ảnh và thêm vào FAISS index
     """
+    # Sử dụng biến toàn cục global để lưu trữ index, face_database, face_ids
     global index, face_database, face_ids
+    # Duyệt qua các file trong thư mục chứa ảnh
     face_vectors = []
+    # duyệt qua các file trong thư mục chứa ảnh
+    # liệt kê các thư mục trong thư mục chứa ảnh
     for filename in os.listdir(folder_path):
+        # lấy các file có đuôi là .jpg
         if filename.endswith(".jpg"):
+            # lấy đường dẫn ảnh bằng cách ghép tên tệp với đường dẫn thư mục
             image_path = os.path.join(folder_path, filename)
+            # processed_face đọc ảnh và xử lý ảnh
+            # image_path là 1 chuỗi chứa đường dẫn ảnh
+            # is_path=True để xác định đường dẫn ảnh chạy lại đoạn code trên với cv2.imread để đọc ảnh
             processed_face, _ = preprocess_face(image_path, is_path=True)
+            # nếu không phát hiện khuôn mặt thì bỏ qua
             if processed_face is None:
                 print(f"Không thể phát hiện khuôn mặt trong ảnh: {filename}")
                 continue
+            # lấy vector đặc trưng từ khuôn mặt
             vector = get_face_embedding(processed_face)
+            # nếu vector là none thì có nghĩa là không thể lấy được ảnh nên bỏ qua 
+            # nếu vector không none thì tiếp tục phần dưới
             if vector is not None:
+                # tạo id cho face_id
+                # uuid.uuid4() tạo 1 id ngẫu nhiên dạng chuỗi đêr làm key
                 uid = str(uuid.uuid4())
+                # thêm id vào face_ids giúp theo dõi thứ tự khuân mặt đã đang ký
                 face_ids.append(uid)
+                # lưu vector vào face_database với key là uid
                 face_database[uid] = vector
+                # thêm vector vào danh sách face_vectors
                 face_vectors.append(vector)
+                # in ra thông báo đã đăng ký khuôn mặt từ ảnh
                 print(f"Đã đăng ký khuôn mặt từ ảnh: {filename}, FaceID: {uid}")
+    # kiểm tra xem face_vectors có phần tử không
+    # nếu không rỗng thì tiếp tục phần dưới
     if face_vectors:
+        # chuyển face_vectors thành mảng numpy
+        # với kiểu dữ liệu là float32 để tối ưu hiệu xuất tính toán
         face_vectors = np.array(face_vectors, dtype=np.float32)
+        # thêm face_vectors vào index
+        # index là 1 faiss index giúp tìm kiếm vector đặc trưng nhanh chóng
         index.add(face_vectors)
+        
 # Hàm nhận diện khuôn mặt từ camera
 def recognize_face(frame):
     """
     Nhận diện khuôn mặt trong frame từ camera
     """
+    # Tiền xử lý khuôn mặt từ frame
+    # preprocess_face là ảnh đã được xử lý
+    # face_coords là tọa độ khuôn mặt
     processed_face, face_coords = preprocess_face(frame, is_path=False)
+    # Nếu không tìm thấy khuân mặt trong đầu vào thì trả về None
     if processed_face is None:
         return None, frame
-    
+    # Lấy vector đặc trưng từ khuôn mặt
     face_embedding = get_face_embedding(processed_face)
+    # Nếu không lấy được vector đặc trưng thì trả về None
     if face_embedding is None:
         return None, frame
-    
+    # kiểm tra xem khuôn mặt được phát hiện hay không
     if face_coords is not None:
+        # tọa độ khuôn mặt được truyền vào face_coords
         x, y, w, h = face_coords
+        # vẽ hình chữ nhật xung quanh khuôn mặt 
+        # x, y là tọa độ góc trên bên trái 
+        # x+w y+h là tọa độ góc dưới bên phải
+        # (0, 255, 0) là màu của hình chữ nhật
+        # 2 là độ dày của hình chữ nhật
         cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-    
+    # Tìm kiếm khuôn mặt gần nhất trong index
     if index.ntotal > 0:
         D, I = index.search(face_embedding.reshape(1, -1), 1)
         print(f"Kết quả tìm kiếm FAISS: Khoảng cách={D[0][0]}, Chỉ mục={I[0][0]}")  # Debug
