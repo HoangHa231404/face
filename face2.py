@@ -165,13 +165,25 @@ def recognize_face(frame):
         # 2 là độ dày của hình chữ nhật
         cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
     # Tìm kiếm khuôn mặt gần nhất trong index
+    # index.ntotal là số lượng vector trong index 
+    # nếu lớn hơn 0 thì tiếp tục chạy chương trình
     if index.ntotal > 0:
-        D, I = index.search(face_embedding.reshape(1, -1), 1)
+        # tìm kiếm khoảng cách và chỉ mục từ vector đặc trưng
+        # face_embedding là vector đặc trưng của khuôn mặt cần tìm
+        # reshape(1, -1) chuyển vector đặc trưng về dạng 2d để faiss có thể xử lý
+        D, I = index.search(face_embedding.reshape(1, -1), 1) # K=1, tìm 1 vector gần nhất
+        # khoảng cách và chỉ mục của vector gần nhất
         print(f"Kết quả tìm kiếm FAISS: Khoảng cách={D[0][0]}, Chỉ mục={I[0][0]}")  # Debug
+        # Nếu khoảng cách nhỏ hơn 20 thì xác định là khuôn mặt đã đăng ký
         if D[0][0] < 20:
+            # Lấy face_id từ chỉ mục I
             uid = face_ids[I[0][0]]
+            # Tính toán độ tin cậy từ khoảng cách
             confidence = 1 - (D[0][0] / 20)
+            # Hiển thị thông tin khuôn mặt và độ tin cậy trên camera
+            # cv2.FONT_HERSHEY_SIMPLEX là kiểu font chữ đơn giản của cv2
             cv2.putText(frame, f"FaceID: {uid} Conf: {confidence:.2f}", (x, y-20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            # Trả về face_id và frame đã xử lý
             return uid, frame
     return None, frame
 
@@ -191,9 +203,13 @@ while True: # Vòng lặp vô hạn cho đến khi bị lỗi hoặc nhấn phí
     # processed_frame là frame đã được xử lý 
     # hàm recognize_face để nhận diện khuân mặt từ frame
     detected_face_id, processed_frame = recognize_face(frame)
+    # Hiển thị kết quả nhận diện khuôn mặt
     cv2.imshow("Face Recognition", processed_frame)
     print(f"Face detected: {detected_face_id}")  # Debug nhận diện
+    # Nếu nhấn phím q thì thoát khỏ
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
+# Giải phóng camera và đóng cửa sổ
 cap.release()
+# giải phóng bộ nhớ và đóng cửa sổ
 cv2.destroyAllWindows()
