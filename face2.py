@@ -52,7 +52,7 @@ def preprocess_face(img, is_path=False):
         face = cv2.resize(face, (224, 224))
         #chuyển đổi dữ liệu sang dạng float32 và /255.0 để chuẩn hóa dữ liệu về dạng 0-1 để giảm kích thước dữ liệu
         face = face.astype(np.float32) / 255.0
-        #trả về khuôn mặt và tọa độ
+        #trả về khuôn mặt và tọa độ sau khi xử lý
         return face, (x, y, w, h)
     print("Không phát hiện khuôn mặt")#nếu không phát hiện khuôn mặt thì in ra dòng này
     return None, None #trả về None nếu không phát hiện khuôn mặt
