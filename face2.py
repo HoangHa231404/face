@@ -76,16 +76,14 @@ def get_face_embedding(face):
         #  model_name: tên mô hình, ở đây sử dụng mô hình Facenet 
         #  enforce_detection: kiểm tra khuôn mặt
         #  deepfacce sẽ trả về 1 vector đặc trưng khi không tìm thấy khuân mặt nếu enforce_detection=False
-        embedding_result = DeepFace.represent(img_path=temp_path, model_name="Facenet", enforce_detection=False)
-        #xóa tệp tạm thời khi đã lấy được đặc trưng khuôn mặt
-        os.remove(temp_path)
-        #trả về vector đặc trưng dưới dạng mảng numpy
-        #embedding_result[0]['embedding'] là vector đặc trưng được trích xuất từ ảnh nhờ deepface
-        #dtype=np.float32 chuyển về dạng float32 để tiết kiệm bộ nhớ
-        #flatten() chuyển mảng nhiều chiều về mảng 1 chiều
-        return np.array(embedding_result[0]['embedding'], dtype=np.float32).flatten()
-    #nếu không lấy được vector đặc trưng thì trả về None
-    return None
+    embedding_result = DeepFace.represent(img_path=temp_path, model_name="Facenet", enforce_detection=False)
+    #xóa tệp tạm thời khi đã lấy được đặc trưng khuôn mặt
+    os.remove(temp_path)
+    #trả về vector đặc trưng dưới dạng mảng numpy
+    #embedding_result[0]['embedding'] là vector đặc trưng được trích xuất từ ảnh nhờ deepface
+    #dtype=np.float32 chuyển về dạng float32 để tiết kiệm bộ nhớ
+    #flatten() chuyển mảng nhiều chiều về mảng 1 chiều
+    return np.array(embedding_result[0]['embedding'], dtype=np.float32).flatten()
 
 # Hàm đăng ký khuôn mặt từ thư mục có sẵn
 def register_face(folder_path):
