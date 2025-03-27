@@ -4,6 +4,51 @@ from deepface import DeepFace
 import faiss
 import numpy as np
 import tempfile
+import tensorflow as tf
+
+# Kiểm tra xem có GPU hay không
+gpus = tf.config.list_physical_devices('GPU')
+print("Sử dụng GPU:", gpus)  # Thêm dòng này để in danh sách GPU
+
+if gpus:
+    for gpu in gpus:
+        tf.config.set_logical_device_configuration(
+            gpu,
+            [tf.config.LogicalDeviceConfiguration(memory_limit=4096)]
+        )
+    tf.config.experimental.set_memory_growth(gpus[0], True)
+    print("GPU đã sẵn sàng và đang được sử dụng!")
+
+# Xây dựng mô hình học tập
+model = tf.keras.Sequential([
+    tf.keras.layers.Dense(128, activation='relu', input_shape=(128,)),
+    tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.Dense(128, activation='linear')
+])
+
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+if not os.path.exists("./models"):
+    os.makedirs("./models")
+
+MODEL_PATH = "./models/face_recognition_model.h5"
+try:
+    model.save(MODEL_PATH)
+    print("Mô hình đã được lưu thành công!")
+except Exception as e:
+    print(f"Lỗi khi lưu mô hình: {e}")
+
+# Nếu có mô hình đã lưu, tải lại
+if os.path.exists(MODEL_PATH):
+    model.load_weights(MODEL_PATH)
+    print("Đã tải mô hình từ tệp lưu trữ.")
+
+def train_model(face_vectors):
+    face_vectors = np.array(face_vectors)
+    print("Bắt đầu huấn luyện mô hình với dữ liệu có shape:", face_vectors.shape)
+    model.fit(face_vectors, face_vectors, epochs=10, batch_size=4, verbose=1)
+    model.save(MODEL_PATH)
+    print("Mô hình đã được lưu lại.")
 
 def get_all_subfolders(folder):
     """
@@ -75,7 +120,6 @@ def preprocess_face(img, is_path=False):
     print("Không phát hiện khuôn mặt")
     return None, None
 
-
 def get_face_embedding(face):
     """
     Lấy embedding vector từ DeepFace
@@ -124,7 +168,6 @@ def register_faces(root_folder):
             index.add(aggregated_vector.reshape(1, -1))
             print(f"Đã tổng hợp vector cho thư mục: {folder_name}")
 
-
 def recognize_face(frame):
     """
     Nhận diện khuôn mặt trong frame từ camera
@@ -158,9 +201,7 @@ def recognize_face(frame):
             return uid, frame
     return None, frame
 
-
 register_faces("./face_images")
-
 
 cap = cv2.VideoCapture(0)
 
@@ -178,5 +219,4 @@ while True:
         break
 
 cap.release()
-
 cv2.destroyAllWindows()
