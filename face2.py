@@ -4,6 +4,82 @@ from deepface import DeepFace
 import faiss
 import numpy as np
 import tempfile
+import tensorflow as tf
+
+# Kiểm tra xem có GPU hay không
+# tf.config.list_physical_devices('GPU') trả về danh sách các GPU
+# nếu không có GPU thì trả về danh sách rỗng
+gpus = tf.config.list_physical_devices('GPU')
+# Nếu có GPU thì in ra thông báo và sử dụng GPU
+print("Sử dụng GPU:", gpus)  # Thêm dòng này để in danh sách GPU
+# Nếu có GPU thì sử dụng GPU
+if gpus:
+    # Cấu hình GPU
+    for gpu in gpus:
+        # Cấu hình bộ nhớ GPU
+        # tf.config.set_logical_device_configuration cấu hình bộ nhớ cho GPU
+        #giới hạn bộ nhớ của GPU là 4096
+        tf.config.set_logical_device_configuration(
+            gpu,
+            [tf.config.LogicalDeviceConfiguration(memory_limit=4096)]
+        )
+    #cho phép tensorflow sử dụng bộ nhớ GPU
+    # thay vì sử dụng toàn bộ bộ nhớ GPU thì chỉ sử dụng bộ nhớ cần thiết
+    tf.config.experimental.set_memory_growth(gpus[0], True)
+    print("GPU đã sẵn sàng và đang được sử dụng!")
+
+# Xây dựng mô hình học tập
+# tạo mô hình với 3 lớp
+# các lớp được xếp chồng lên nhau
+model = tf.keras.Sequential([
+    # lớp đầu tiên có 128 nơ-ron, hàm kích hoạt relu
+    # input_shape=(128,) là kích thước của vector đặc trưng
+    # sử dụng hàm kích hoạt relu để giữ giá trị dương và giảm giá trị âm
+    tf.keras.layers.Dense(128, activation='relu', input_shape=(128,)),
+    # lớp thứ 2 có 64 nơ-ron, hàm kích hoạt relu
+    tf.keras.layers.Dense(64, activation='relu'),
+    # lớp thứ 3 có 128 nơ-ron, hàm kích hoạt linear
+    # hàm kích hoạt linear không thay đổi giá trị đầu ra
+    tf.keras.layers.Dense(128, activation='linear')
+])
+
+model.compile(optimizer='adam', loss='mean_squared_error')
+# Kiểm tra xem thư mục models có tồn tại không
+if not os.path.exists("./models"):
+    # Nếu không tồn tại thì tạo thư mục models
+    os.makedirs("./models")
+
+# đường dẫn lưu mô hình
+MODEL_PATH = "./models/face_recognition_model.h5"
+
+# Lưu mô hình
+try:
+    # Lưu mô hình vào tệp MODEL_PATH
+    model.save(MODEL_PATH)
+    print("Mô hình đã được lưu thành công!")
+# Bắt lỗi nếu có lỗi khi lưu mô hình
+except Exception as e:
+    print(f"Lỗi khi lưu mô hình: {e}")
+
+# Nếu có mô hình đã lưu, tải lại
+# os.path.exists kiểm tra xem tệp có tồn tại không
+if os.path.exists(MODEL_PATH):
+    # Tải mô hình từ tệp lưu trữ
+    model.load_weights(MODEL_PATH)
+    print("Đã tải mô hình từ tệp lưu trữ.")
+
+# Hàm huấn luyện mô hình với dữ liệu vector khuôn mặt
+# face_vectors là dữ liệu vector khuôn mặt
+def train_model(face_vectors):
+    # Chuyển dữ liệu về dạng numpy array
+    face_vectors = np.array(face_vectors)
+    # In ra thông tin dữ liệu
+    print("Bắt đầu huấn luyện mô hình với dữ liệu có shape:", face_vectors.shape)
+    # Huấn luyện mô hình với dữ liệu vector khuôn mặt
+    model.fit(face_vectors, face_vectors, epochs=10, batch_size=4, verbose=1)
+    # Lưu mô hình sau khi huấn luyện
+    model.save(MODEL_PATH)
+    print("Mô hình đã được lưu lại.")
 
 # Hàm lấy tất cả các thư mục con bên trong một thư mục
 def get_all_subfolders(folder):
@@ -13,7 +89,11 @@ def get_all_subfolders(folder):
     #os.listdir trả về danh sách các tệp và thư mục trong thư mục được chỉ định
     #kiểm tra nếu d là thư mục thì thêm vào danh sách subfolders
     #os.path.join nối đường dẫn thư mục với tên thư mục con
-    subfolders = [os.path.join(folder, d) for d in os.listdir(folder) if os.path.isdir(os.path.join(folder, d))]
+    subfolders = [
+        os.path.join(folder, d)
+        for d in os.listdir(folder)
+        if os.path.isdir(os.path.join(folder, d))
+    ]
     #trả về danh sách thư mục con
     return subfolders
 
@@ -25,10 +105,13 @@ index = faiss.IndexFlatIP(VECTOR_SIZE)
 
 # Dictionary lưu trữ mapping từ face_id đến vector
 face_database = {}
-face_ids = []  # Danh sách các face_id theo thứ tự thêm vào index
-
+face_ids = [] # Danh sách các face_id theo thứ tự thêm vào index
 # Tải bộ nhận diện khuôn mặt Haarcascade
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
+
 # Hàm kiểm tra thư mục chứa ảnh
 def check_image_folders(folder_paths):
     """
@@ -46,7 +129,11 @@ def check_image_folders(folder_paths):
             continue
         #os.listdir(folder_path) trả về danh sách các tệp và thư mục trong thư mục được chỉ định
         #kiểm tra f.lower().endswith(('.jpg', '.jpeg', '.png')) xem tệp có phải là ảnh không
-        image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+        image_files = [
+            f
+            for f in os.listdir(folder_path)
+            if f.lower().endswith((".jpg", ".jpeg", ".png"))
+        ]
         #nếu không tìm thấy ảnh trong thư mục thì bỏ qua
         if not image_files:
             print(f"Không tìm thấy ảnh trong thư mục {folder_path}.")
@@ -55,15 +142,16 @@ def check_image_folders(folder_paths):
         valid_folders.append(folder_path)
     #trả về danh sách thư mục chứa ảnh
     return valid_folders
+
 # Hàm tiền xử lý khuôn mặt bằng OpenCV Haarcascade
 def preprocess_face(img, is_path=False):
     """
     Hàm tiền xử lý khuôn mặt bằng OpenCV Haarcascade
     """
-    if is_path:# Nếu đầu vào là đường dẫn ảnh
-        img = cv2.imread(img)# Đọc ảnh từ đường dẫn
-        if img is None:# Nếu không đọc được ảnh
-            return None, None# Trả về None
+    if is_path: # Nếu đầu vào là đường dẫn ảnh
+        img = cv2.imread(img) # Đọc ảnh từ đường dẫn
+        if img is None: # Nếu không đọc được ảnh
+            return None, None # Trả về None
     # Chuyển ảnh màu sang ảnh xám
     # ## sử dụng ảnh xám để tăng tốc độ xử lý, 
     # giảm kích thước dữ liệu, dùng thư viện cv2 không thể sử dụng ảnh màu
@@ -71,14 +159,16 @@ def preprocess_face(img, is_path=False):
     # ##Hàm detectMultiScale để phát hiện khuôn mặt trong ảnh, nguồn gốc cv2
     # scaleFactor: hệ số giảm kích thước ảnh, minNeighbors: số lần phát hiện khuôn mặt xung quanh 1 khuôn mặt
     # minSize: kích thước tối thiểu của khuôn mặt
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    faces = face_cascade.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+    )
     # Vòng lặp qua các khuôn mặt phát hiện được
     # x y w h là tọa độ và kích thước của khuôn mặt
     # x y là tọa độ 2 bên trái phải, w h là chiều rộng và chiều cao
-    for (x, y, w, h) in faces:
+    for x, y, w, h in faces:
         # cắt khuân mặt từ ảnh được phát hiện từ ảnh gốc
         # chứa khuân mặt được phát hiện từ detectMultiScale trước đó
-        face = img[y:y+h, x:x+w]
+        face = img[y : y + h, x : x + w]
         #kiểm tra xem khuôn mặt có tồn tại không bằng cách kiểm tra x.y.size có bằng 0 không
         if face.size == 0:
             #nếu không tồn tại thì bỏ qua
@@ -93,6 +183,7 @@ def preprocess_face(img, is_path=False):
         return face, (x, y, w, h)
     print("Không phát hiện khuôn mặt")
     return None, None
+
 # Hàm trích xuất đặc trưng khuôn mặt từ ảnh
 def get_face_embedding(face):
     """
@@ -108,21 +199,23 @@ def get_face_embedding(face):
         # khi chuyển đổi về dạng uint8 thì giá trị của ảnh sẽ nằm trong khoảng 0-255q
         #cần chuyển về dạng uint8 vì opencv chỉ nhận ảnh dạng uint8 sau đó lưu ảnh vào tệp tạm thời temp_path
         cv2.imwrite(temp_path, (face * 255).astype(np.uint8))
-     #sử dụng hàm represent trong thư viện deepface để lấy vector đặc trưng từ ảnh
-        #tham số img_path: đường dẫn ảnh
-        #  model_name: tên mô hình, ở đây sử dụng mô hình Facenet 
-        #  enforce_detection: kiểm tra khuôn mặt
-        #  deepfacce sẽ trả về 1 vector đặc trưng khi không tìm thấy khuân mặt nếu enforce_detection=False
-    embedding_result = DeepFace.represent(img_path=temp_path, model_name="Facenet", enforce_detection=False)
+    #sử dụng hàm represent trong thư viện deepface để lấy vector đặc trưng từ ảnh
+    #tham số img_path: đường dẫn ảnh
+    #  model_name: tên mô hình, ở đây sử dụng mô hình Facenet 
+    #  enforce_detection: kiểm tra khuôn mặt
+    #  deepfacce sẽ trả về 1 vector đặc trưng khi không tìm thấy khuân mặt nếu enforce_detection=False    
+    embedding_result = DeepFace.represent(
+        img_path=temp_path, model_name="Facenet", enforce_detection=False
+    )
     #xóa tệp tạm thời khi đã lấy được đặc trưng khuôn mặt
     os.remove(temp_path)
     #lấy vector đặc trưng từ embedding_result
     #embedding_result là một list chứa vector đặc trưng
     #dtype=np.float32 chuyển về dạng float32
-    embedding = np.array(embedding_result[0]['embedding'], dtype=np.float32).flatten()
+    embedding = np.array(embedding_result[0]["embedding"], dtype=np.float32).flatten()
     #trả về vector đặc trưng đã được xử lý
     #np.linalg.norm(embedding) là chuẩn hóa vector
-    return embedding / np.linalg.norm(embedding)  # Chuẩn hóa vector
+    return embedding / np.linalg.norm(embedding) # Chuẩn hóa vector
 
 # Hàm đăng ký khuôn mặt từ thư mục có sẵn
 def register_faces(root_folder):
@@ -158,7 +251,7 @@ def register_faces(root_folder):
                 if processed_face is None:
                     print(f"Không thể phát hiện khuôn mặt trong ảnh: {filename}")
                     continue
-                # lấy vector đặc trưng từ khuôn mặt
+                # lấy vector đặc trưng từ khuôn mặt đã xử lý
                 vector = get_face_embedding(processed_face)
                 # nếu vector là none thì có nghĩa là không thể lấy được ảnh nên bỏ qua 
                 # nếu vector không none thì tiếp tục phần dưới
@@ -174,7 +267,7 @@ def register_faces(root_folder):
             # chuẩn hóa vector đưa về độ dài 1 để so sánh
             # np.linalg.norm tính độ dài vector
             # chia cho norm để chuẩn hóa vector
-            aggregated_vector = aggregated_vector / np.linalg.norm(aggregated_vector)  # Chuẩn hóa
+            aggregated_vector = aggregated_vector / np.linalg.norm(aggregated_vector)
             #lưu tên thư mục vào face_ids
             face_ids.append(folder_name)
             #lưu vector vào face_database
@@ -210,7 +303,7 @@ def recognize_face(frame):
         # x+w y+h là tọa độ góc dưới bên phải
         # (0, 255, 0) là màu của hình chữ nhật
         # 2 là độ dày của hình chữ nhật
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
     # Tìm kiếm khuôn mặt gần nhất trong index
     # index.ntotal là số lượng vector trong index 
     # nếu lớn hơn 0 thì tiếp tục chạy chương trình
@@ -227,7 +320,9 @@ def recognize_face(frame):
             print(f"Đã phát hiện khuôn mặt [{uid}] với độ tin cậy: {confidence}")
             # Hiển thị thông tin khuôn mặt và độ tin cậy trên camera
             # cv2.FONT_HERSHEY_SIMPLEX là kiểu font chữ đơn giản của cv2
-            cv2.putText(frame, uid, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            cv2.putText(
+                frame, uid, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2
+            )
             # Trả về face_id và frame đã xử lý
             return uid, frame
     return None, frame
@@ -238,11 +333,12 @@ register_faces("./face_images")
 
 # Mở camera và nhận diện khuôn mặt theo thời gian thực
 cap = cv2.VideoCapture(0)
+
 # Vòng lặp để nhận diện khuôn mặt từ camera
-while True:# Vòng lặp vô hạn cho đến khi bị lỗi hoặc nhấn phím q
+while True: # Vòng lặp vô hạn cho đến khi bị lỗi hoặc nhấn phím q
     # Đọc frame từ camera hàm cap lấy dữ liệu từ camera và đọc nó ra
-    ret, frame = cap.read()
-    if not ret:# Nếu không đọc được frame thì thoát khỏi vòng lặp
+    ret, frame = cap.read() 
+    if not ret: # Nếu không đọc được frame thì thoát khỏi vòng lặp
         break
     # Nhận diện khuôn mặt và hiển thị kết quả 
     # detection_face_id là id của khuôn mặt được nhận diện  
@@ -252,11 +348,13 @@ while True:# Vòng lặp vô hạn cho đến khi bị lỗi hoặc nhấn phím
     # Hiển thị kết quả nhận diện khuôn mặt
     cv2.imshow("Face Recognition", processed_frame)
     if detected_face_id:
-        print(f"Đã phát hiện khuôn mặt [{detected_face_id}]")  # Debug nhận diện
+        print(f"Đã phát hiện khuôn mặt [{detected_face_id}]") # Debug nhận diện
     # Nếu nhấn phím q thì thoát khỏi vòng lặp
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if cv2.waitKey(1) & 0xFF == ord("q"):
         break
+
 # Giải phóng camera và đóng cửa sổ
 cap.release()
+
 # giải phóng bộ nhớ và đóng cửa sổ
 cv2.destroyAllWindows()
