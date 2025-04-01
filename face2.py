@@ -6,6 +6,7 @@ import numpy as np
 import tempfile
 import tensorflow as tf
 
+#vector được sử dụng để biểu diễn khuôn mặt dưới dạng một dãy số, giúp so sánh và nhận diện khuôn mặt dễ dàng hơn
 # Kiểm tra xem có GPU hay không
 # tf.config.list_physical_devices('GPU') trả về danh sách các GPU
 # nếu không có GPU thì trả về danh sách rỗng
@@ -28,58 +29,6 @@ if gpus:
     tf.config.experimental.set_memory_growth(gpus[0], True)
     print("GPU đã sẵn sàng và đang được sử dụng!")
 
-# Xây dựng mô hình học tập
-# tạo mô hình với 3 lớp
-# các lớp được xếp chồng lên nhau
-model = tf.keras.Sequential([
-    # lớp đầu tiên có 128 nơ-ron, hàm kích hoạt relu
-    # input_shape=(128,) là kích thước của vector đặc trưng
-    # sử dụng hàm kích hoạt relu để giữ giá trị dương và giảm giá trị âm
-    tf.keras.layers.Dense(128, activation='relu', input_shape=(128,)),
-    # lớp thứ 2 có 64 nơ-ron, hàm kích hoạt relu
-    tf.keras.layers.Dense(64, activation='relu'),
-    # lớp thứ 3 có 128 nơ-ron, hàm kích hoạt linear
-    # hàm kích hoạt linear không thay đổi giá trị đầu ra
-    tf.keras.layers.Dense(128, activation='linear')
-])
-
-model.compile(optimizer='adam', loss='mean_squared_error')
-# Kiểm tra xem thư mục models có tồn tại không
-if not os.path.exists("./models"):
-    # Nếu không tồn tại thì tạo thư mục models
-    os.makedirs("./models")
-
-# đường dẫn lưu mô hình
-MODEL_PATH = "./models/face_recognition_model.h5"
-
-# Lưu mô hình
-try:
-    # Lưu mô hình vào tệp MODEL_PATH
-    model.save(MODEL_PATH)
-    print("Mô hình đã được lưu thành công!")
-# Bắt lỗi nếu có lỗi khi lưu mô hình
-except Exception as e:
-    print(f"Lỗi khi lưu mô hình: {e}")
-
-# Nếu có mô hình đã lưu, tải lại
-# os.path.exists kiểm tra xem tệp có tồn tại không
-if os.path.exists(MODEL_PATH):
-    # Tải mô hình từ tệp lưu trữ
-    model.load_weights(MODEL_PATH)
-    print("Đã tải mô hình từ tệp lưu trữ.")
-
-# Hàm huấn luyện mô hình với dữ liệu vector khuôn mặt
-# face_vectors là dữ liệu vector khuôn mặt
-def train_model(face_vectors):
-    # Chuyển dữ liệu về dạng numpy array
-    face_vectors = np.array(face_vectors)
-    # In ra thông tin dữ liệu
-    print("Bắt đầu huấn luyện mô hình với dữ liệu có shape:", face_vectors.shape)
-    # Huấn luyện mô hình với dữ liệu vector khuôn mặt
-    model.fit(face_vectors, face_vectors, epochs=10, batch_size=4, verbose=1)
-    # Lưu mô hình sau khi huấn luyện
-    model.save(MODEL_PATH)
-    print("Mô hình đã được lưu lại.")
 
 # Hàm lấy tất cả các thư mục con bên trong một thư mục
 def get_all_subfolders(folder):
